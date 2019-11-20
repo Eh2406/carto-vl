@@ -32,11 +32,12 @@ export default class Windshaft {
     }
 
     _getInstantiationID (vizInfo, choices) {
-        const { MNS, resolution, filtering } = vizInfo;
+        const { MNS, resolution, filtering, aggregationPlacement } = vizInfo;
 
         return JSON.stringify({
             MNS: schema.simplify(MNS),
             resolution,
+            aggregationPlacement,
             filtering: choices.backendFilters ? filtering : null,
             options: choices
         });
@@ -65,10 +66,11 @@ export default class Windshaft {
     _getServerInfoFrom (viz) {
         const MNS = this._getMinNeededSchemaFrom(viz);
         const resolution = viz.resolution.value;
+        const aggregationPlacement = viz.aggregationPlacement.value;
         const filtering = windshaftFiltering.getFiltering(viz, { exclusive: this._exclusive });
 
         // TODO: properly document returned output at jsdoc (with typedef?)
-        const vizInfo = { MNS, resolution, filtering }; // TODO this looks like a Type or even a Class
+        const vizInfo = { MNS, resolution, filtering, aggregationPlacement }; // TODO this looks like a Type or even a Class
         return vizInfo;
     }
 
@@ -131,14 +133,15 @@ export default class Windshaft {
      *  - When the filter conditions changed and the dataset should be server-filtered.
      */
     _needToInstantiateMap (vizInfo) {
-        const { MNS, resolution, filtering } = vizInfo;
+        const { MNS, resolution, filtering, aggregationPlacement } = vizInfo;
 
         const schemaChanged = schema.notEquals(this._MNS, MNS);
         const resolutionChanged = this.resolution !== resolution;
+        const aggregationPlacementChanged = this.aggregationPlacement !== aggregationPlacement;
         const filteringChanged = JSON.stringify(this.filtering) !== JSON.stringify(filtering);
         const shouldBeServerFiltered = this.metadata && (this.metadata.featureCount > MIN_FILTERING);
 
-        return schemaChanged || resolutionChanged || (filteringChanged && shouldBeServerFiltered);
+        return schemaChanged || resolutionChanged || aggregationPlacementChanged || (filteringChanged && shouldBeServerFiltered);
     }
 
     _isInstantiated () {
@@ -160,9 +163,9 @@ export default class Windshaft {
     }
 
     async _instantiateUncached (vizInfo, choices = { backendFilters: true }, overrideMetadata = null) {
-        const { MNS, resolution, filtering } = vizInfo;
+        const { MNS, resolution, aggregationPlacement, filtering } = vizInfo;
 
-        const agg = await this._generateAggregation(MNS, resolution);
+        const agg = await this._generateAggregation(MNS, resolution, aggregationPlacement);
         let select = this._buildSelectClause(MNS);
         let aggSQL = this._buildQuery(select);
 
@@ -189,10 +192,10 @@ export default class Windshaft {
         let { urlTemplates, metadata } = await this._getInstantiationPromise(query, conf, agg, aggSQL, select, overrideMetadata, MNS);
         metadata.backendFiltersApplied = backendFiltersApplied;
 
-        return { MNS, resolution, filtering, metadata, urlTemplates };
+        return { MNS, resolution, aggregationPlacement, filtering, metadata, urlTemplates };
     }
 
-    _updateStateAfterInstantiating ({ MNS, resolution, filtering, metadata, urlTemplates }) {
+    _updateStateAfterInstantiating ({ MNS, resolution, aggregationPlacement, filtering, metadata, urlTemplates }) {
         if (this._mvtClient) {
             this._mvtClient.free();
         }
@@ -205,6 +208,7 @@ export default class Windshaft {
         this._MNS = MNS;
         this.filtering = filtering;
         this.resolution = resolution;
+        this.aggregationPlacement = aggregationPlacement;
         this._checkLayerMeta(MNS);
     }
 
@@ -253,7 +257,7 @@ export default class Windshaft {
         let aggregation = {
             columns: {},
             dimensions: {},
-            placement: 'centroid',
+            placement: aggregationPlacement || 'centroid',
             resolution: resolution,
             threshold: 1
         };

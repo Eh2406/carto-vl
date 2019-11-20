@@ -3,6 +3,7 @@ export const SUPPORTED_VIZ_PROPERTIES = [
     'filter',
     'order',
     'resolution',
+    'aggregationPlacement',
     'strokeColor',
     'strokeWidth',
     'symbol',
